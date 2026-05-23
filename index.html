@@ -199,6 +199,27 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 .pkey.del { background: rgba(255,255,255,.06); font-size: 16px; }
 .pin-err { color: #FCA5A5; font-size: 12px; font-weight: 600; min-height: 18px; }
 
+/* Profile picker */
+#profile-picker {
+  position: fixed; inset: 0; z-index: 600;
+  background: linear-gradient(160deg, #1C4A30, #2E6B47);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 24px; max-width: 430px; margin: 0 auto;
+}
+.pp-logo  { font-size: 52px; }
+.pp-title { color: #fff; font-size: 24px; font-weight: 800; }
+.pp-sub   { color: rgba(255,255,255,.65); font-size: 15px; margin-top: -16px; }
+.pp-cards { display: flex; gap: 16px; }
+.pp-card  {
+  background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.2);
+  border-radius: 18px; padding: 28px 32px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  transition: background .2s, border-color .2s; color: #fff; font-family: inherit;
+}
+.pp-card:hover, .pp-card:active { background: rgba(255,255,255,.24); border-color: rgba(255,255,255,.6); }
+.pp-avatar { font-size: 44px; }
+.pp-name   { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
+
 /* Modal */
 #modal-bg {
   position: fixed; inset: 0; background: rgba(0,0,0,.45);
@@ -251,6 +272,23 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 </head>
 <body>
 
+<!-- PROFILE PICKER -->
+<div id="profile-picker">
+  <div class="pp-logo">🥗</div>
+  <div class="pp-title">Health Tracker</div>
+  <div class="pp-sub">Who's tracking today?</div>
+  <div class="pp-cards">
+    <button class="pp-card" onclick="selectUser('blessy')">
+      <span class="pp-avatar">👩</span>
+      <span class="pp-name">Blessy</span>
+    </button>
+    <button class="pp-card" onclick="selectUser('aniketh')">
+      <span class="pp-avatar">👨</span>
+      <span class="pp-name">Aniketh</span>
+    </button>
+  </div>
+</div>
+
 <!-- LOCK SCREEN -->
 <div id="lock-screen" class="hidden">
   <div class="ls-logo">🥗</div>
@@ -279,6 +317,11 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
       <div class="hdr-top">
         <span class="hdr-date" id="today-date">Today</span>
         <div style="display:flex;align-items:center;gap:8px;">
+          <button onclick="showProfilePicker()" style="background:var(--accent-lt);border:none;border-radius:99px;padding:3px 10px 3px 8px;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:5px;font-family:inherit;">
+            <span id="active-user-avatar" style="font-size:14px;">👩</span>
+            <span id="active-user-label">Blessy</span>
+            <span style="font-size:10px;opacity:.6;">⇄</span>
+          </button>
           <span id="sync-dot" onclick="manualSync()" title="Tap to sync"
             style="width:9px;height:9px;border-radius:50%;background:#CCC;display:inline-block;cursor:pointer;flex-shrink:0;"></span>
           <button class="lock-btn" id="day-lock-btn" onclick="toggleDayLock()">🔓</button>
@@ -617,7 +660,7 @@ const FB_CONFIG = {
   messagingSenderId: "157911375375",
   appId: "1:157911375375:web:1451e818a4952ee12d0d7a"
 };
-const FB_USER = 'blessy'; // personal app — fixed user doc
+let _activeUser = null; // set by profile picker
 let _fs = null, _syncTimer = null;
 
 function setSyncDots(status) {
@@ -636,32 +679,29 @@ function initFirebase() {
   try {
     if (!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
     _fs = firebase.firestore();
-    // Enable offline persistence so it works on phone even without internet
     _fs.enablePersistence().catch(()=>{});
-    loadFromFirestore();
+    // Don't load data yet — wait for user selection
   } catch(e) {
     console.warn('Firebase init error:', e);
-    setSyncDots('error');
   }
 }
 
 async function loadFromFirestore() {
-  if (!_fs) return;
+  if (!_fs || !_activeUser) return;
   setSyncDots('syncing');
   try {
-    const snap = await _fs.collection('users').doc(FB_USER).get();
+    const snap = await _fs.collection('users').doc(_activeUser).get();
     if (snap.exists) {
       const remote = snap.data();
-      const local = (() => { try { return JSON.parse(localStorage.getItem('ht_v1') || 'null'); } catch { return null; } })();
+      const local = (() => { try { return JSON.parse(localStorage.getItem(activeKey()) || 'null'); } catch { return null; } })();
       const merged = mergeHealthData(local, remote);
-      localStorage.setItem('ht_v1', JSON.stringify(merged));
+      localStorage.setItem(activeKey(), JSON.stringify(merged));
       setSyncDots('synced');
       renderToday();
-      renderHistory && renderHistory();
     } else {
-      // First time — push local data to cloud
-      const db = (() => { try { return JSON.parse(localStorage.getItem('ht_v1') || 'null'); } catch { return null; } })();
-      if (db) await _fs.collection('users').doc(FB_USER).set(db);
+      // First time this user — push local data to cloud
+      const db = (() => { try { return JSON.parse(localStorage.getItem(activeKey()) || 'null'); } catch { return null; } })();
+      if (db) await _fs.collection('users').doc(_activeUser).set(db);
       setSyncDots('synced');
     }
   } catch(e) {
@@ -688,32 +728,32 @@ function mergeHealthData(local, remote) {
 }
 
 function scheduleFSSync() {
+  if (!_activeUser) return;
   setSyncDots('syncing');
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async () => {
-    if (!_fs) { setSyncDots('error'); return; }
+    if (!_fs || !_activeUser) { setSyncDots('error'); return; }
     try {
-      await _fs.collection('users').doc(FB_USER).set(getDB());
+      await _fs.collection('users').doc(_activeUser).set(getDB());
       setSyncDots('synced');
     } catch(e) {
       console.warn('Firestore save error:', e);
       setSyncDots('error');
     }
-  }, 2500); // wait 2.5s after last change before writing to Firestore
+  }, 2500);
 }
 
 async function manualSync() {
-  if (!_fs) { toast('⚠️ Firebase not connected'); return; }
+  if (!_fs || !_activeUser) { toast('⚠️ Select a profile first'); return; }
   setSyncDots('syncing');
   toast('🔄 Syncing…');
   try {
-    // Push local → cloud first, then pull cloud → local
-    await _fs.collection('users').doc(FB_USER).set(getDB());
-    const snap = await _fs.collection('users').doc(FB_USER).get();
+    await _fs.collection('users').doc(_activeUser).set(getDB());
+    const snap = await _fs.collection('users').doc(_activeUser).get();
     if (snap.exists) {
       const remote = snap.data();
       const merged = mergeHealthData(getDB(), remote);
-      localStorage.setItem('ht_v1', JSON.stringify(merged));
+      localStorage.setItem(activeKey(), JSON.stringify(merged));
       renderToday();
     }
     setSyncDots('synced');
@@ -726,6 +766,7 @@ async function manualSync() {
 
 /* ══════════ DATA ══════════ */
 const KEY = 'ht_v1';
+function activeKey() { return KEY + '_' + _activeUser; }
 
 const SEED_FOODS = [
   {name:'Egg, boiled (1 whole)',          calories:78,  protein:6.3, carbs:0.6, fat:5.3, fiber:0  },
@@ -753,15 +794,19 @@ const EX_CAL_PER_MIN = {
 };
 
 function getDB() {
+  if (!_activeUser) return mkDB();
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(activeKey());
     if (!raw) { const db=mkDB(); seedFoods(db); saveDB(db); return db; }
     const db = JSON.parse(raw);
     if (!db.myFoods) { db.myFoods={}; seedFoods(db); saveDB(db); }
     return db;
   } catch { return mkDB(); }
 }
-function saveDB(db) { localStorage.setItem(KEY, JSON.stringify(db)); scheduleFSSync(); }
+function saveDB(db) {
+  if (!_activeUser) return;
+  localStorage.setItem(activeKey(), JSON.stringify(db)); scheduleFSSync();
+}
 function mkDB() {
   return { profile:{name:'',age:null,gender:'female',height:null,activityLevel:'moderate',weightGoal:'maintain',pin:null,setupDone:false}, logs:{}, myFoods:{} };
 }
@@ -1351,12 +1396,46 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeModal();closeExModal();closePinModal();}
 });
 
+/* ══════════ PROFILE PICKER ══════════ */
+const USERS = {
+  blessy:  { label: 'Blessy',  avatar: '👩' },
+  aniketh: { label: 'Aniketh', avatar: '👨' },
+};
+
+function showProfilePicker() {
+  _activeUser = null;
+  document.getElementById('profile-picker').classList.remove('hidden');
+  document.getElementById('lock-screen').classList.add('hidden');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('nav').style.display = 'none';
+}
+
+function selectUser(userId) {
+  _activeUser = userId;
+  // Migrate Blessy's existing data (stored under old key 'ht_v1') to new key
+  if (userId === 'blessy') {
+    const oldData = localStorage.getItem('ht_v1');
+    if (oldData && !localStorage.getItem(activeKey())) {
+      localStorage.setItem(activeKey(), oldData);
+    }
+  }
+  document.getElementById('profile-picker').classList.add('hidden');
+  document.getElementById('active-user-label').textContent = USERS[userId].label;
+  document.getElementById('active-user-avatar').textContent = USERS[userId].avatar;
+  document.getElementById('app').style.display = '';
+  document.getElementById('nav').style.display = '';
+  checkLock();
+  renderToday();
+  const prof = getDB().profile;
+  if (!prof.setupDone) document.getElementById('profile-banner').classList.remove('hidden');
+  else document.getElementById('profile-banner').classList.add('hidden');
+  loadFromFirestore();
+}
+
 /* ══════════ INIT ══════════ */
 (function(){
-  checkLock(); renderToday();
-  if(!getDB().profile.setupDone) document.getElementById('profile-banner').classList.remove('hidden');
-  // Init Firebase after a short delay so the UI renders first
-  setTimeout(initFirebase, 300);
+  initFirebase();
+  showProfilePicker();
 })();
 </script>
 </body>
