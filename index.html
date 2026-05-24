@@ -221,7 +221,7 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 .pp-name   { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
 
 /* Modal */
-#modal-bg {
+#modal-bg, #ex-modal-bg {
   position: fixed; inset: 0; background: rgba(0,0,0,.45);
   z-index: 300; display: flex; align-items: flex-end; justify-content: center;
   max-width: 430px; margin: 0 auto;
@@ -578,41 +578,69 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
       <h3 id="ex-modal-title">Log Exercise</h3>
       <button class="modal-x" onclick="closeExModal()">✕</button>
     </div>
+
+    <!-- Exercise type dropdown (Apple Health top 15) -->
     <div class="form-row">
       <label>Exercise *</label>
       <select id="ex-type" onchange="onExTypeChange()">
-        <option value="">— Select or type below —</option>
-        <option value="Running">Running</option>
-        <option value="Walking">Walking</option>
-        <option value="Cycling">Cycling</option>
-        <option value="Swimming">Swimming</option>
-        <option value="HIIT / Circuit training">HIIT / Circuit training</option>
-        <option value="Weight training">Weight training</option>
-        <option value="Yoga">Yoga</option>
-        <option value="Pilates">Pilates</option>
-        <option value="Jump rope">Jump rope</option>
-        <option value="Stretching">Stretching</option>
-        <option value="Other">Other (type below)</option>
+        <option value="">— Select exercise —</option>
+        <option value="Running">🏃 Running</option>
+        <option value="Walking">🚶 Walking</option>
+        <option value="Cycling">🚴 Cycling</option>
+        <option value="Swimming">🏊 Swimming</option>
+        <option value="HIIT">⚡ HIIT</option>
+        <option value="Strength Training">🏋️ Strength Training</option>
+        <option value="Yoga">🧘 Yoga</option>
+        <option value="Hiking">🥾 Hiking</option>
+        <option value="Elliptical">🔄 Elliptical</option>
+        <option value="Rowing">🚣 Rowing</option>
+        <option value="Pilates">🤸 Pilates</option>
+        <option value="Jump Rope">🪢 Jump Rope</option>
+        <option value="Stair Climbing">🪜 Stair Climbing</option>
+        <option value="Dance / Zumba">💃 Dance / Zumba</option>
+        <option value="Badminton">🏸 Badminton</option>
+        <option value="Other">✏️ Other (type below)</option>
       </select>
     </div>
     <div class="form-row" id="ex-custom-row" style="display:none;">
-      <label>Exercise name</label>
-      <input type="text" id="ex-name-custom" placeholder="e.g. Badminton">
+      <label>Exercise name *</label>
+      <input type="text" id="ex-name-custom" placeholder="e.g. Tennis, Crossfit…">
     </div>
+
+    <!-- Total time + Distance (running/walking only) -->
     <div class="form-2col">
       <div class="form-row">
-        <label>Duration (min) *</label>
-        <input type="number" id="ex-duration" placeholder="30" min="1" max="600" oninput="autoCalcExCal()">
+        <label>Total Time (min) *</label>
+        <input type="number" id="ex-duration" placeholder="e.g. 45" min="1" max="600" oninput="autoCalcExCal()" style="font-size:18px;font-weight:700;">
+      </div>
+      <div class="form-row" id="ex-km-row" style="display:none;">
+        <label>Distance (km)</label>
+        <input type="number" id="ex-km" placeholder="e.g. 5.2" min="0" step="0.1" style="font-size:18px;font-weight:700;">
+      </div>
+    </div>
+
+    <!-- Calories row -->
+    <div class="form-2col">
+      <div class="form-row">
+        <label>Active Calories (kcal)</label>
+        <input type="number" id="ex-active-cal" placeholder="from watch" min="0">
       </div>
       <div class="form-row">
-        <label>Calories burned</label>
-        <input type="number" id="ex-cal" placeholder="auto" min="0">
+        <label>Total Calories (kcal)</label>
+        <input type="number" id="ex-cal" placeholder="auto-est." min="0">
         <div class="cal-hint" id="ex-cal-hint"></div>
       </div>
     </div>
+
+    <!-- Heart rate -->
+    <div class="form-row">
+      <label>Avg Heart Rate (bpm) — optional</label>
+      <input type="number" id="ex-hr" placeholder="e.g. 145" min="40" max="220">
+    </div>
+
     <div class="form-row">
       <label>Notes (optional)</label>
-      <input type="text" id="ex-notes" placeholder="e.g. 5km, morning run">
+      <input type="text" id="ex-notes" placeholder="e.g. 5 km morning run, felt strong">
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeExModal()">Cancel</button>
@@ -786,11 +814,23 @@ const SEED_FOODS = [
   {name:'Peanut butter (1 tbsp)',        calories:94,  protein:4,   carbs:3,   fat:8,   fiber:1  },
 ];
 
-// Approx calories burned per minute (70 kg person)
+// Approx active kcal/min for ~65 kg person (Apple Health equivalent)
 const EX_CAL_PER_MIN = {
-  'Running':20, 'Walking':5, 'Cycling':8, 'Swimming':9,
-  'HIIT / Circuit training':12, 'Weight training':6,
-  'Yoga':3, 'Pilates':4, 'Jump rope':13, 'Stretching':2,
+  'Running': 10,         // moderate pace ~9 min/km
+  'Walking': 4,          // brisk walk
+  'Cycling': 7,          // moderate outdoor/stationary
+  'Swimming': 8,         // freestyle moderate
+  'HIIT': 10,            // high intensity intervals
+  'Strength Training': 5,// weight training
+  'Yoga': 3,             // hatha/vinyasa
+  'Hiking': 6,           // trails with elevation
+  'Elliptical': 7,       // moderate resistance
+  'Rowing': 8,           // moderate rowing machine
+  'Pilates': 4,          // mat pilates
+  'Jump Rope': 11,       // continuous jumping
+  'Stair Climbing': 8,   // stair climber machine
+  'Dance / Zumba': 6,    // zumba class
+  'Badminton': 6,        // recreational
 };
 
 function getDB() {
@@ -867,7 +907,7 @@ function foodTotals(log){
     carbs:a.carbs+(i.carbs||0),fat:a.fat+(i.fat||0),fiber:a.fiber+(i.fiber||0)
   }),{calories:0,protein:0,carbs:0,fat:0,fiber:0});
 }
-function exTotalCal(log){ return (log.exercises||[]).reduce((s,e)=>s+(e.calories||0),0); }
+function exTotalCal(log){ return (log.exercises||[]).reduce((s,e)=>s+(e.activeCalories||e.calories||0),0); }
 function mealKcal(items){ return items.reduce((s,i)=>s+(i.calories||0),0); }
 
 /* ══════════ DATE ══════════ */
@@ -989,17 +1029,28 @@ function renderToday(){
   document.getElementById('ex-body').className='sec-body'+(exOpen?' open':'');
   document.getElementById('ex-add-btn').style.display=log.locked?'none':'';
   exList.innerHTML=exes.length===0?`<div class="item-empty">No exercise logged yet</div>`:
-    exes.map(e=>`
-      <div class="item-row">
+    exes.map(e=>{
+      const activeCal=e.activeCalories||e.calories||0;
+      const totalCal=e.totalCalories||e.calories||0;
+      const meta=[
+        `${e.duration} min`,
+        e.km?`📍 ${e.km} km`:'',
+        e.avgHR?`❤️ ${e.avgHR} bpm`:'',
+        activeCal?`🔥 ${activeCal} active kcal`:'',
+        totalCal&&totalCal!==activeCal?`${totalCal} total kcal`:'',
+        e.notes?`<i>${esc(e.notes)}</i>`:'',
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      return `<div class="item-row">
         <div class="item-lhs">
           <div class="item-name">${esc(e.name)}</div>
-          <div class="item-meta">${e.duration} min${e.calories?` &nbsp;·&nbsp; ${e.calories} kcal burned`:''}${e.notes?` &nbsp;·&nbsp; <i>${esc(e.notes)}</i>`:''}</div>
+          <div class="item-meta">${meta}</div>
         </div>
         <div class="item-rhs">
-          <span class="item-val" style="color:var(--orange);">${e.calories||'—'}</span>
+          <span class="item-val" style="color:var(--orange);">${activeCal||'—'}</span>
           ${!log.locked?`<button class="icon-btn" onclick="editExercise('${e.id}')">✏️</button><button class="icon-btn" onclick="delExercise('${e.id}')">🗑️</button>`:''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
   // Habits — water
   const wg=goals?.water||8;
@@ -1175,36 +1226,51 @@ function closeModal(e){
 
 /* ══════════ EXERCISE MODAL ══════════ */
 let _editExId=null;
-const EX_TYPE_TO_CALORIES = EX_CAL_PER_MIN;
 
 function onExTypeChange(){
   const type=document.getElementById('ex-type').value;
   document.getElementById('ex-custom-row').style.display=(type==='Other'||type==='')?'':'none';
+  // Show km field only for Running and Walking
+  document.getElementById('ex-km-row').style.display=(type==='Running'||type==='Walking')?'':'none';
   autoCalcExCal();
 }
 function autoCalcExCal(){
   const type=document.getElementById('ex-type').value;
   const mins=parseFloat(document.getElementById('ex-duration').value)||0;
-  const perMin=EX_TYPE_TO_CALORIES[type]||0;
-  if(perMin&&mins){
-    const est=Math.round(perMin*mins);
-    document.getElementById('ex-cal').value=est;
-    document.getElementById('ex-cal-hint').textContent=`Auto-estimated (~${perMin} kcal/min). Adjust if your watch says otherwise.`;
+  const km=parseFloat(document.getElementById('ex-km').value)||0;
+  const perMin=EX_CAL_PER_MIN[type]||0;
+  // For running/walking, use distance-based estimate if km entered (65 kg avg)
+  // Running: ~60 kcal/km, Walking: ~50 kcal/km
+  const KM_CAL={Running:60,Walking:50};
+  let est=0;
+  if(km && KM_CAL[type]){
+    est=Math.round(km*KM_CAL[type]);
+    document.getElementById('ex-cal-hint').textContent=`Est. ~${KM_CAL[type]} kcal/km. Override with watch data.`;
+  } else if(perMin && mins){
+    est=Math.round(perMin*mins);
+    document.getElementById('ex-cal-hint').textContent=`Est. ~${perMin} kcal/min. Override with watch data.`;
   } else {
-    document.getElementById('ex-cal-hint').textContent=type&&type!=='Other'?`~${EX_TYPE_TO_CALORIES[type]||'?'} kcal/min for this activity`:'';
+    document.getElementById('ex-cal-hint').textContent=
+      (type&&type!=='Other'&&type!=='')?`~${EX_CAL_PER_MIN[type]||'?'} kcal/min once you enter duration`:'';
+  }
+  if(est>0){
+    if(!document.getElementById('ex-active-cal').value)
+      document.getElementById('ex-active-cal').value=est;
+    if(!document.getElementById('ex-cal').value)
+      document.getElementById('ex-cal').value=Math.round(est*1.1);
   }
 }
 function openAddExercise(){
+  if(!_activeUser){toast('Select a profile first');return;}
   const log=getLog(todayStr()); if(log.locked){toast('🔒 Day is locked');return;}
   _editExId=null;
   document.getElementById('ex-modal-title').textContent='Log Exercise';
-  document.getElementById('ex-type').value='';
-  document.getElementById('ex-name-custom').value='';
-  document.getElementById('ex-duration').value='';
-  document.getElementById('ex-cal').value='';
+  ['ex-type','ex-name-custom','ex-duration','ex-km','ex-active-cal','ex-cal','ex-hr','ex-notes'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
   document.getElementById('ex-cal-hint').textContent='';
-  document.getElementById('ex-notes').value='';
   document.getElementById('ex-custom-row').style.display='none';
+  document.getElementById('ex-km-row').style.display='none';
   document.getElementById('ex-modal-bg').classList.remove('hidden');
 }
 function editExercise(id){
@@ -1217,7 +1283,11 @@ function editExercise(id){
   document.getElementById('ex-name-custom').value=knownType==='Other'?ex.name:'';
   document.getElementById('ex-custom-row').style.display=knownType==='Other'?'':'none';
   document.getElementById('ex-duration').value=ex.duration||'';
-  document.getElementById('ex-cal').value=ex.calories||'';
+  document.getElementById('ex-km').value=ex.km||'';
+  document.getElementById('ex-km-row').style.display=(knownType==='Running'||knownType==='Walking')?'':'none';
+  document.getElementById('ex-active-cal').value=ex.activeCalories||ex.calories||'';
+  document.getElementById('ex-cal').value=ex.totalCalories||ex.calories||'';
+  document.getElementById('ex-hr').value=ex.avgHR||'';
   document.getElementById('ex-cal-hint').textContent='';
   document.getElementById('ex-notes').value=ex.notes||'';
   document.getElementById('ex-modal-bg').classList.remove('hidden');
@@ -1227,10 +1297,18 @@ function saveExercise(){
   const customName=document.getElementById('ex-name-custom').value.trim();
   const name=(type==='Other'||type==='')?customName:type;
   const duration=parseFloat(document.getElementById('ex-duration').value)||0;
-  const calories=parseFloat(document.getElementById('ex-cal').value)||0;
+  const activeCalories=parseFloat(document.getElementById('ex-active-cal').value)||0;
+  const totalCalories=parseFloat(document.getElementById('ex-cal').value)||activeCalories;
+  const avgHR=parseInt(document.getElementById('ex-hr').value)||0;
+  const km=parseFloat(document.getElementById('ex-km').value)||0;
   if(!name){toast('Select or enter an exercise');return;}
-  if(!duration){toast('Enter duration');return;}
-  const ex={id:_editExId||uid(),name,duration,calories,notes:document.getElementById('ex-notes').value.trim()};
+  if(!duration){toast('Enter total time');return;}
+  const ex={
+    id:_editExId||uid(), name, duration,
+    activeCalories, totalCalories, avgHR, km,
+    calories: activeCalories||totalCalories,
+    notes:document.getElementById('ex-notes').value.trim()
+  };
   const d=todayStr(),log=getLog(d);
   if(_editExId){const i=log.exercises.findIndex(e=>e.id===_editExId);if(i>-1)log.exercises[i]=ex;}
   else log.exercises.push(ex);
