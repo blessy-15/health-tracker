@@ -221,7 +221,7 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 .pp-name   { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
 
 /* Modal */
-#modal-bg, #ex-modal-bg {
+#modal-bg, #ex-modal-bg, #import-modal-bg {
   position: fixed; inset: 0; background: rgba(0,0,0,.45);
   z-index: 300; display: flex; align-items: flex-end; justify-content: center;
   max-width: 430px; margin: 0 auto;
@@ -265,6 +265,28 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 /* Empty */
 .empty { text-align: center; padding: 24px 16px; color: var(--muted); font-size: 13px; }
 .empty .ei { font-size: 30px; display: block; margin-bottom: 8px; }
+
+/* History card clickable */
+.hist-card { cursor: pointer; transition: box-shadow .15s; }
+.hist-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,.12); }
+.hist-edit-hint { font-size: 11px; color: var(--accent); font-weight: 700; margin-top: 6px; }
+
+/* Past-day banner */
+#past-day-banner { background: #EBF0F7; border-left-color: var(--blue); color: var(--blue); }
+#past-day-banner a { color: var(--blue); font-weight: 700; cursor: pointer; }
+
+/* Day nav arrows */
+.day-nav-btn { background: none; border: none; font-size: 22px; cursor: pointer; padding: 0 4px; color: var(--text2); line-height: 1; border-radius: 6px; }
+.day-nav-btn:hover { background: var(--bg); }
+.day-nav-btn:disabled { opacity: 0.2; cursor: default; }
+
+/* Import modal textarea */
+#import-text { width:100%; border:1.5px solid var(--border); border-radius:8px; padding:10px 12px; font-size:13px; font-family:monospace; background:#fff; color:var(--text); outline:none; resize:vertical; min-height:110px; }
+#import-text:focus { border-color:var(--accent); }
+.import-preview-item { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.import-preview-item:last-child { border-bottom:none; }
+.import-preview-name { font-weight:600; flex:1; }
+.import-preview-cal { color:var(--accent); font-weight:700; }
 </style>
 <!-- Firebase SDK (compat v10) -->
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -315,7 +337,11 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 
     <div id="today-header">
       <div class="hdr-top">
-        <span class="hdr-date" id="today-date">Today</span>
+        <div style="display:flex;align-items:center;gap:2px;">
+          <button class="day-nav-btn" onclick="navDay(-1)">‹</button>
+          <span class="hdr-date" id="today-date">Today</span>
+          <button class="day-nav-btn" id="nav-next-btn" onclick="navDay(1)" disabled>›</button>
+        </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <button onclick="showProfilePicker()" style="background:var(--accent-lt);border:none;border-radius:99px;padding:3px 10px 3px 8px;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:5px;font-family:inherit;">
             <span id="active-user-avatar" style="font-size:14px;">👩</span>
@@ -343,6 +369,14 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 
     <div id="profile-banner" class="banner hidden">
       ⚠️ <a onclick="showTab('settings')">Set up your profile</a> to unlock personalised goals.
+    </div>
+    <div id="past-day-banner" class="banner hidden">
+      ✏️ Editing <strong id="past-day-label"></strong> &nbsp;—&nbsp; <a onclick="goToToday()">Back to Today</a>
+    </div>
+
+    <!-- Import from Claude button -->
+    <div style="display:flex;justify-content:flex-end;padding:6px 12px 0;">
+      <button onclick="openImportModal()" style="background:none;border:1.5px solid var(--border);border-radius:99px;padding:5px 13px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;">📋 Import from Claude</button>
     </div>
 
     <!-- Meals -->
@@ -531,7 +565,7 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 
 <!-- NAV -->
 <nav id="nav">
-  <button class="nav-tab on"  id="nav-today"    onclick="showTab('today')">   <span class="ni">🏠</span>Today</button>
+  <button class="nav-tab on"  id="nav-today"    onclick="goToToday()">   <span class="ni">🏠</span>Today</button>
   <button class="nav-tab"     id="nav-weight"   onclick="showTab('weight')">  <span class="ni">⚖️</span>Weight</button>
   <button class="nav-tab"     id="nav-history"  onclick="showTab('history')"> <span class="ni">📅</span>History</button>
   <button class="nav-tab"     id="nav-settings" onclick="showTab('settings')"><span class="ni">⚙️</span>Settings</button>
@@ -677,6 +711,49 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeExModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveExercise()" style="background:#C07020;">Save Exercise</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT FROM CLAUDE MODAL -->
+<div id="import-modal-bg" class="hidden" onclick="closeImportModal(event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+      <h3>📋 Import from Claude</h3>
+      <button class="modal-x" onclick="closeImportModal()">✕</button>
+    </div>
+    <!-- Step 1 -->
+    <div style="background:var(--accent-lt);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:10px;font-weight:800;color:var(--accent);letter-spacing:.5px;margin-bottom:6px;">STEP 1 — COPY THIS PROMPT AND GIVE IT TO CLAUDE</div>
+      <div id="claude-prompt-box" style="font-size:12px;font-family:monospace;color:var(--text);line-height:1.7;background:#fff;border-radius:6px;padding:8px 10px;white-space:pre-wrap;">Give me macros for: [write what you ate]
+One line per food, exactly this format:
+FoodName | calories | protein_g | carbs_g | fat_g | fiber_g
+
+Example:
+Banana 1 medium | 105 | 1.3 | 27 | 0.4 | 3.1</div>
+      <button onclick="copyImportPrompt()" style="margin-top:8px;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Copy prompt</button>
+    </div>
+    <!-- Step 2 -->
+    <div class="form-row">
+      <label>STEP 2 — PASTE CLAUDE'S RESPONSE HERE</label>
+      <textarea id="import-text" oninput="previewImport()" placeholder="Banana 1 medium | 105 | 1.3 | 27 | 0.4 | 3.1&#10;Dal cooked 1 cup | 230 | 14 | 40 | 1 | 8&#10;Roti | 120 | 3 | 22 | 3 | 2"></textarea>
+    </div>
+    <!-- Step 3 -->
+    <div class="form-row">
+      <label>STEP 3 — ADD TO MEAL</label>
+      <select id="import-meal-select">
+        <option value="breakfast">🌅 Breakfast</option>
+        <option value="morningSnack">🍎 Morning Snack</option>
+        <option value="lunch">☀️ Lunch</option>
+        <option value="eveningSnack">🍊 Evening Snack</option>
+        <option value="dinner">🌙 Dinner</option>
+      </select>
+    </div>
+    <!-- Preview -->
+    <div id="import-preview" style="margin-top:4px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeImportModal()">Cancel</button>
+      <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()" disabled>Add Foods</button>
     </div>
   </div>
 </div>
@@ -964,6 +1041,30 @@ function fmtDate(s){
   return date.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 }
 
+/* ══════════ DAY NAVIGATION ══════════ */
+let _viewDate = null;
+function viewDate(){ return _viewDate || todayStr(); }
+
+function navDay(delta){
+  const parts=viewDate().split('-').map(Number);
+  const d=new Date(parts[0],parts[1]-1,parts[2]);
+  d.setDate(d.getDate()+delta);
+  const nd=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+  if(nd>todayStr()) return;
+  _viewDate = nd===todayStr() ? null : nd;
+  renderToday();
+}
+function viewDay(date){
+  _viewDate = date===todayStr() ? null : date;
+  showTab('today');
+  window.scrollTo(0,0);
+}
+function goToToday(){
+  _viewDate = null;
+  showTab('today');
+  window.scrollTo(0,0);
+}
+
 /* ══════════ TABS ══════════ */
 function showTab(name){
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('on'));
@@ -988,11 +1089,27 @@ let openMeals=new Set(['breakfast']);
 let exOpen=true;
 
 function renderToday(){
-  const today=todayStr(),log=getLog(today),goals=getGoals();
+  const today=viewDate(),isToday=!_viewDate,log=getLog(today),goals=getGoals();
   const ft=foodTotals(log), exCal=exTotalCal(log), net=ft.calories-exCal;
 
-  document.getElementById('today-date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  // Header date label
+  document.getElementById('today-date').textContent = isToday
+    ? new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})
+    : fmtDate(today);
   document.getElementById('day-lock-btn').textContent=log.locked?'🔒':'🔓';
+
+  // Next button — disabled if already on today
+  const nextBtn=document.getElementById('nav-next-btn');
+  if(nextBtn) nextBtn.disabled=isToday;
+
+  // Past-day banner
+  const pastBanner=document.getElementById('past-day-banner');
+  if(pastBanner){
+    if(!isToday){
+      document.getElementById('past-day-label').textContent=fmtDate(today);
+      pastBanner.classList.remove('hidden');
+    } else { pastBanner.classList.add('hidden'); }
+  }
 
   // Calorie chips + bar
   document.getElementById('chip-eaten').textContent=`${ft.calories} eaten`;
@@ -1150,23 +1267,23 @@ function toggleMeal(key){ if(openMeals.has(key))openMeals.delete(key);else openM
 function toggleSection(s){ if(s==='exercise'){exOpen=!exOpen; renderToday();} }
 
 function toggleDayLock(){
-  const d=todayStr(),log=getLog(d); log.locked=!log.locked; saveLog(d,log);
+  const d=viewDate(),log=getLog(d); log.locked=!log.locked; saveLog(d,log);
   toast(log.locked?'🔒 Day locked':'🔓 Unlocked'); renderToday();
 }
 function changeWater(delta){
-  const d=todayStr(),log=getLog(d);
+  const d=viewDate(),log=getLog(d);
   if(log.locked){toast('🔒 Day is locked');return;}
   log.water=Math.max(0,Math.min(20,log.water+delta)); saveLog(d,log); renderToday();
 }
 function toggleReading(){
-  const d=todayStr(),log=getLog(d);
+  const d=viewDate(),log=getLog(d);
   if(log.locked){document.getElementById('reading-toggle').checked=log.reading.done;toast('🔒 Day is locked');return;}
   log.reading.done=document.getElementById('reading-toggle').checked;
   if(!log.reading.done) log.reading.minutes=0;
   saveLog(d,log); renderToday();
 }
 function saveReadingMins(){
-  const d=todayStr(),log=getLog(d);
+  const d=viewDate(),log=getLog(d);
   if(log.locked) return;
   log.reading.minutes=parseInt(document.getElementById('reading-mins').value)||0;
   saveLog(d,log);
@@ -1274,14 +1391,14 @@ function resetFoodForm(){
   document.getElementById('search-dropdown').style.display='none';
 }
 function openAddFood(mealKey){
-  const log=getLog(todayStr()); if(log.locked){toast('🔒 Day is locked');return;}
+  const log=getLog(viewDate()); if(log.locked){toast('🔒 Day is locked');return;}
   _meal=mealKey; _editId=null; resetFoodForm();
   document.getElementById('modal-title').textContent=`Add to ${MEALS.find(m=>m.key===mealKey).label}`;
   document.getElementById('modal-bg').classList.remove('hidden');
   setTimeout(()=>document.getElementById('f-name').focus(),80);
 }
 function editFood(mealKey,id){
-  const log=getLog(todayStr()); if(log.locked){toast('🔒 Day is locked');return;}
+  const log=getLog(viewDate()); if(log.locked){toast('🔒 Day is locked');return;}
   const item=log.meals[mealKey].find(i=>i.id===id); if(!item) return;
   _meal=mealKey; _editId=id; resetFoodForm();
   document.getElementById('modal-title').textContent=`Edit — ${MEALS.find(m=>m.key===mealKey).label}`;
@@ -1320,14 +1437,14 @@ function saveFoodItem(){
     fat:parseFloat(document.getElementById('f-fat').value)||0,
     fiber:parseFloat(document.getElementById('f-fiber').value)||0,
     notes:document.getElementById('f-notes').value.trim()};
-  const d=todayStr(),log=getLog(d);
+  const d=viewDate(),log=getLog(d);
   if(_editId){const i=log.meals[_meal].findIndex(x=>x.id===_editId);if(i>-1)log.meals[_meal][i]=item;}
   else{log.meals[_meal].push(item);openMeals.add(_meal);}
   saveLog(d,log); saveToLib(item); closeModal(); renderToday(); toast(_editId?'✏️ Updated':'✅ Saved');
 }
 function delFood(mealKey,id){
   if(!confirm('Remove this item?')) return;
-  const d=todayStr(),log=getLog(d);
+  const d=viewDate(),log=getLog(d);
   log.meals[mealKey]=log.meals[mealKey].filter(i=>i.id!==id);
   saveLog(d,log); renderToday(); toast('Removed');
 }
@@ -1374,7 +1491,7 @@ function autoCalcExCal(){
 }
 function openAddExercise(){
   if(!_activeUser){toast('Select a profile first');return;}
-  const log=getLog(todayStr()); if(log.locked){toast('🔒 Day is locked');return;}
+  const log=getLog(viewDate()); if(log.locked){toast('🔒 Day is locked');return;}
   _editExId=null;
   document.getElementById('ex-modal-title').textContent='Log Exercise';
   ['ex-type','ex-name-custom','ex-duration','ex-km','ex-active-cal','ex-cal','ex-hr','ex-notes'].forEach(id=>{
@@ -1386,7 +1503,7 @@ function openAddExercise(){
   document.getElementById('ex-modal-bg').classList.remove('hidden');
 }
 function editExercise(id){
-  const log=getLog(todayStr()); if(log.locked){toast('🔒 Day is locked');return;}
+  const log=getLog(viewDate()); if(log.locked){toast('🔒 Day is locked');return;}
   const ex=log.exercises.find(e=>e.id===id); if(!ex) return;
   _editExId=id;
   document.getElementById('ex-modal-title').textContent='Edit Exercise';
@@ -1421,14 +1538,14 @@ function saveExercise(){
     calories: activeCalories||totalCalories,
     notes:document.getElementById('ex-notes').value.trim()
   };
-  const d=todayStr(),log=getLog(d);
+  const d=viewDate(),log=getLog(d);
   if(_editExId){const i=log.exercises.findIndex(e=>e.id===_editExId);if(i>-1)log.exercises[i]=ex;}
   else log.exercises.push(ex);
   saveLog(d,log); closeExModal(); renderToday(); toast(_editExId?'✏️ Updated':'🏋️ Exercise saved');
 }
 function delExercise(id){
   if(!confirm('Remove this exercise?')) return;
-  const d=todayStr(),log=getLog(d);
+  const d=viewDate(),log=getLog(d);
   log.exercises=log.exercises.filter(e=>e.id!==id);
   saveLog(d,log); renderToday(); toast('Removed');
 }
@@ -1489,12 +1606,13 @@ function renderHistory(){
       log.weight?`⚖️ ${log.weight}kg`:'',
       `🍽 ${items} items`,
     ].filter(Boolean);
-    return `<div class="hist-card">
+    return `<div class="hist-card" onclick="viewDay('${date}')">
       <div class="hist-top">
         <span class="hist-date">${fmtDate(date)} ${log.locked?'🔒':''}</span>
         ${met.length?`<span style="font-size:13px;">${met.join(' ')}</span>`:''}
       </div>
       <div class="hist-pills">${pills.map(p=>`<span class="hist-pill">${p}</span>`).join('')}</div>
+      <div class="hist-edit-hint">Tap to view &amp; edit →</div>
     </div>`;
   }).join('');
 }
@@ -1573,6 +1691,86 @@ function removePin(){if(!confirm('Remove PIN?'))return;const db=getDB();db.profi
 function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(getDB(),null,2)],{type:'application/json'}));a.download=`health-tracker-${todayStr()}.json`;a.click();toast('Exported');}
 function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.profile||!d.logs)throw 0;localStorage.setItem(KEY,JSON.stringify(d));renderToday();renderSettings();toast('Imported');}catch{toast('Invalid file');}};r.readAsText(f);e.target.value='';}
 function clearAll(){if(!confirm('Delete ALL data?'))return;localStorage.removeItem(KEY);renderToday();renderSettings();toast('Cleared');}
+
+/* ══════════ IMPORT FROM CLAUDE ══════════ */
+let _importedFoods = [];
+
+function openImportModal(){
+  if(!_activeUser){toast('Select a profile first');return;}
+  document.getElementById('import-text').value='';
+  document.getElementById('import-preview').innerHTML='';
+  document.getElementById('import-confirm-btn').disabled=true;
+  _importedFoods=[];
+  document.getElementById('import-modal-bg').classList.remove('hidden');
+}
+function closeImportModal(e){
+  if(e&&e.target!==document.getElementById('import-modal-bg')) return;
+  document.getElementById('import-modal-bg').classList.add('hidden');
+}
+function copyImportPrompt(){
+  const txt=document.getElementById('claude-prompt-box').textContent;
+  navigator.clipboard.writeText(txt).then(()=>toast('✅ Prompt copied!')).catch(()=>{
+    // fallback
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('✅ Prompt copied!');
+  });
+}
+function parseClaudeText(text){
+  const foods=[];
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
+  for(const line of lines){
+    // Format: Name | cal | protein | carbs | fat | fiber
+    const pm=line.match(/^(.+?)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/);
+    if(pm){ foods.push({name:pm[1].replace(/^\W+/,'').trim(),calories:+pm[2],protein:+pm[3],carbs:+pm[4],fat:+pm[5],fiber:+pm[6]}); continue; }
+    // Format: Name | cal | protein | carbs | fat  (5 columns, no fiber)
+    const pm5=line.match(/^(.+?)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*$/);
+    if(pm5){ foods.push({name:pm5[1].replace(/^\W+/,'').trim(),calories:+pm5[2],protein:+pm5[3],carbs:+pm5[4],fat:+pm5[5],fiber:0}); continue; }
+    // Format: Name: X kcal, Protein: Xg, Carbs: Xg, Fat: Xg, Fiber: Xg
+    const nm=line.match(/^[*\-\d.)\s]*(.+?)(?:\s*[:\-–]|\s{2,})/);
+    const cal=line.match(/(\d+\.?\d*)\s*(?:kcal|cal|calories)/i);
+    const pro=line.match(/protein[:\s]+(\d+\.?\d*)/i);
+    const carb=line.match(/carbs?[:\s]+(\d+\.?\d*)/i);
+    const fat=line.match(/fat[:\s]+(\d+\.?\d*)/i);
+    const fib=line.match(/fi(?:ber|bre)[:\s]+(\d+\.?\d*)/i);
+    if(nm&&cal){ foods.push({name:nm[1].trim().replace(/\*+/g,''),calories:+cal[1],protein:pro?+pro[1]:0,carbs:carb?+carb[1]:0,fat:fat?+fat[1]:0,fiber:fib?+fib[1]:0}); }
+  }
+  return foods;
+}
+function previewImport(){
+  const text=document.getElementById('import-text').value;
+  _importedFoods=parseClaudeText(text);
+  const el=document.getElementById('import-preview');
+  const btn=document.getElementById('import-confirm-btn');
+  if(!_importedFoods.length){
+    el.innerHTML=text.trim()?`<div style="color:var(--red);font-size:13px;margin-top:8px;">⚠️ Couldn't parse — make sure Claude uses the pipe format above.</div>`:'';
+    btn.disabled=true; return;
+  }
+  el.innerHTML=`<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px;">${_importedFoods.length} food${_importedFoods.length>1?'s':''} found</div>`+
+    _importedFoods.map(f=>`<div class="import-preview-item">
+      <span class="import-preview-name">${esc(f.name)}</span>
+      <span class="import-preview-cal">${f.calories} kcal</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:8px;">P${f.protein}g C${f.carbs}g F${f.fat}g</span>
+    </div>`).join('');
+  btn.disabled=false;
+}
+function confirmImport(){
+  if(!_importedFoods.length) return;
+  const mealKey=document.getElementById('import-meal-select').value;
+  const d=viewDate(),log=getLog(d);
+  if(log.locked){toast('🔒 Day is locked');return;}
+  const t=nowTime();
+  _importedFoods.forEach(f=>{
+    const item={id:uid(),name:f.name,qty:1,unit:'serving',time:t,
+      calories:f.calories,protein:f.protein,carbs:f.carbs,fat:f.fat,fiber:f.fiber,notes:''};
+    log.meals[mealKey].push(item);
+    saveToLib(item);
+  });
+  openMeals.add(mealKey);
+  saveLog(d,log);
+  closeImportModal();
+  renderToday();
+  toast(`✅ ${_importedFoods.length} food${_importedFoods.length>1?'s':''} added to ${MEALS.find(m=>m.key===mealKey).label}`);
+  _importedFoods=[];
+}
 
 /* ══════════ UTILS ══════════ */
 let _tt;
