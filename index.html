@@ -266,6 +266,21 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
 .empty { text-align: center; padding: 24px 16px; color: var(--muted); font-size: 13px; }
 .empty .ei { font-size: 30px; display: block; margin-bottom: 8px; }
 
+/* Range selector */
+.range-btns { display:flex; gap:5px; background:var(--bg); border-radius:10px; padding:4px; margin-bottom:14px; }
+.range-btn   { flex:1; padding:7px 0; border:none; border-radius:7px; font-size:12px; font-weight:700; font-family:inherit; cursor:pointer; background:transparent; color:var(--muted); transition:all .15s; }
+.range-btn.on{ background:#fff; color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.1); }
+
+/* Trend cards */
+.trend-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0 12px 8px; }
+.trend-grid .card { margin:0; padding:12px; }
+.trend-card-hdr { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:8px; }
+.trend-label { font-size:12px; font-weight:700; color:var(--text2); }
+.trend-val   { font-size:18px; font-weight:800; line-height:1.1; }
+.trend-val.sm{ font-size:15px; }
+.trend-arrow { font-size:11px; margin-top:2px; }
+.trend-avg   { font-size:11px; color:var(--muted); margin-top:4px; text-align:right; }
+
 /* History card clickable */
 .hist-card { cursor: pointer; transition: box-shadow .15s; }
 .hist-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,.12); }
@@ -488,6 +503,19 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
     </div>
   </div>
 
+  <!-- TRENDS -->
+  <div id="tab-trends" class="tab-pane">
+    <div style="padding:12px 12px 20px;">
+      <h2 style="font-size:18px;font-weight:800;padding:8px 0 12px;">📈 Trends</h2>
+      <div class="range-btns">
+        <button class="range-btn on" data-range="daily"   onclick="setTrendRange('daily')">14 Days</button>
+        <button class="range-btn"    data-range="weekly"  onclick="setTrendRange('weekly')">8 Weeks</button>
+        <button class="range-btn"    data-range="monthly" onclick="setTrendRange('monthly')">6 Months</button>
+      </div>
+      <div id="trends-content"></div>
+    </div>
+  </div>
+
   <!-- SETTINGS -->
   <div id="tab-settings" class="tab-pane">
     <h2>⚙️ Settings</h2>
@@ -568,6 +596,7 @@ label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); 
   <button class="nav-tab on"  id="nav-today"    onclick="goToToday()">   <span class="ni">🏠</span>Today</button>
   <button class="nav-tab"     id="nav-weight"   onclick="showTab('weight')">  <span class="ni">⚖️</span>Weight</button>
   <button class="nav-tab"     id="nav-history"  onclick="showTab('history')"> <span class="ni">📅</span>History</button>
+  <button class="nav-tab"     id="nav-trends"   onclick="showTab('trends')">  <span class="ni">📈</span>Trends</button>
   <button class="nav-tab"     id="nav-settings" onclick="showTab('settings')"><span class="ni">⚙️</span>Settings</button>
 </nav>
 
@@ -1074,6 +1103,7 @@ function showTab(name){
   if(name==='today')    renderToday();
   if(name==='weight')   renderWeight();
   if(name==='history')  renderHistory();
+  if(name==='trends')   renderTrends();
   if(name==='settings') renderSettings();
 }
 
@@ -1691,6 +1721,203 @@ function removePin(){if(!confirm('Remove PIN?'))return;const db=getDB();db.profi
 function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(getDB(),null,2)],{type:'application/json'}));a.download=`health-tracker-${todayStr()}.json`;a.click();toast('Exported');}
 function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.profile||!d.logs)throw 0;localStorage.setItem(KEY,JSON.stringify(d));renderToday();renderSettings();toast('Imported');}catch{toast('Invalid file');}};r.readAsText(f);e.target.value='';}
 function clearAll(){if(!confirm('Delete ALL data?'))return;localStorage.removeItem(KEY);renderToday();renderSettings();toast('Cleared');}
+
+/* ══════════ TRENDS ══════════ */
+let _trendRange='daily';
+
+function setTrendRange(r){
+  _trendRange=r;
+  document.querySelectorAll('.range-btn').forEach(b=>b.classList.toggle('on',b.dataset.range===r));
+  renderTrends();
+}
+
+function getMetricValue(log,metric){
+  if(!log) return null;
+  const ft=foodTotals(log), ex=exTotalCal(log);
+  switch(metric){
+    case 'weight':   return log.weight||null;
+    case 'calories': return ft.calories>0?ft.calories-ex:null;
+    case 'protein':  return ft.protein>0?ft.protein:null;
+    case 'carbs':    return ft.carbs>0?ft.carbs:null;
+    case 'fat':      return ft.fat>0?ft.fat:null;
+    case 'fiber':    return ft.fiber>0?ft.fiber:null;
+    case 'water':    return log.water>0?log.water:null;
+    case 'exercise': return ex>0?ex:null;
+  }
+  return null;
+}
+
+function getMetricData(metric,range){
+  const db=getDB(),logs=db.logs;
+  const pts=[];
+  if(range==='daily'){
+    for(let i=13;i>=0;i--){
+      const d=new Date(); d.setDate(d.getDate()-i);
+      const key=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+      const lbl=i===0?'Today':i===1?'Yest':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+      pts.push({label:lbl,value:getMetricValue(logs[key]||null,metric)});
+    }
+  } else if(range==='weekly'){
+    for(let i=7;i>=0;i--){
+      const ws=new Date(); ws.setDate(ws.getDate()-i*7);
+      const we=new Date(ws); we.setDate(ws.getDate()+6);
+      const vals=[];
+      for(let j=0;j<7;j++){
+        const d=new Date(ws); d.setDate(ws.getDate()+j);
+        const key=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+        const v=getMetricValue(logs[key]||null,metric);
+        if(v!==null) vals.push(v);
+      }
+      const lbl=ws.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+      pts.push({label:lbl,value:vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null});
+    }
+  } else {
+    for(let i=5;i>=0;i--){
+      const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
+      const mk=`${d.getFullYear()}-${p2(d.getMonth()+1)}`;
+      const mLogs=Object.entries(logs).filter(([k])=>k.startsWith(mk)).map(([,v])=>v);
+      const vals=mLogs.map(l=>getMetricValue(l,metric)).filter(v=>v!==null&&v>0);
+      pts.push({label:d.toLocaleDateString('en-GB',{month:'short',year:'2-digit'}),
+        value:vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null});
+    }
+  }
+  return pts;
+}
+
+function trendBadge(data,metric){
+  const v=data.filter(d=>d.value!==null);
+  if(v.length<2) return '';
+  const first=v[0].value,last=v[v.length-1].value,diff=last-first;
+  const threshold=metric==='weight'?0.2:metric==='water'?0.3:3;
+  if(Math.abs(diff)<threshold) return `<span style="color:var(--muted);">→ stable</span>`;
+  const up=diff>0;
+  const pct=Math.abs(Math.round(diff/first*100));
+  // For weight: down=good. For exercise,calories,protein etc: up=good usually
+  const goodUp=['exercise','protein','fiber','water'];
+  const badUp=['fat'];
+  const color=goodUp.includes(metric)?(up?'var(--accent)':'var(--red)'):
+               badUp.includes(metric)?(up?'var(--red)':'var(--accent)'):
+               metric==='weight'?(up?'var(--red)':'var(--accent)'):'var(--muted)';
+  return `<span style="color:${color};font-size:11px;">${up?'↑':'↓'} ${pct}%</span>`;
+}
+
+function fmtN(v,dp=0){ return dp?parseFloat(v.toFixed(dp))+'':Math.round(v)+''; }
+
+function makeSVGChart(data,opts={}){
+  const W=330, H=opts.small?68:108;
+  const PL=28,PR=8,PT=8,PB=20;
+  const cW=W-PL-PR, cH=H-PT-PB;
+  const col=opts.color||'#2E6B47';
+  const unit=opts.unit||'';
+
+  const validPts=data.map((d,i)=>d.value!=null?{i,v:d.value}:null).filter(Boolean);
+  if(validPts.length<2) return `<div style="height:${H}px;display:flex;align-items:center;justify-content:center;color:#CCC;font-size:11px;">Log more days to see chart</div>`;
+
+  const vals=validPts.map(p=>p.v);
+  const minV=Math.min(...vals), maxV=Math.max(...vals);
+  const vR=maxV-minV||maxV*0.1||1;
+  const n=data.length-1||1;
+
+  const xp=i=>PL+(i/n)*cW;
+  const yp=v=>PT+cH-((v-minV)/vR)*cH;
+
+  const linePts=validPts.map(p=>`${xp(p.i).toFixed(1)},${yp(p.v).toFixed(1)}`).join(' ');
+  const f=validPts[0],l=validPts[validPts.length-1];
+  const area=`M${xp(f.i).toFixed(1)},${yp(f.v).toFixed(1)} `+
+    validPts.slice(1).map(p=>`L${xp(p.i).toFixed(1)},${yp(p.v).toFixed(1)}`).join(' ')+
+    ` L${xp(l.i).toFixed(1)},${PT+cH} L${xp(f.i).toFixed(1)},${PT+cH} Z`;
+
+  // Goal line
+  let goalSVG='';
+  if(opts.goal&&opts.goal>=minV*0.5&&opts.goal<=maxV*1.5){
+    const clampedG=Math.max(minV,Math.min(maxV,opts.goal));
+    const gy=yp(clampedG).toFixed(1);
+    goalSVG=`<line x1="${PL}" y1="${gy}" x2="${W-PR}" y2="${gy}" stroke="${col}" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+      <text x="${W-PR-2}" y="${(parseFloat(gy)-2).toFixed(1)}" text-anchor="end" font-size="7.5" fill="${col}" opacity="0.6">goal</text>`;
+  }
+
+  // X labels
+  const step=data.length>10?Math.ceil(data.length/4):Math.ceil(data.length/5);
+  const xlbls=data.map((d,i)=>{
+    if(i%step!==0&&i!==data.length-1) return '';
+    return `<text x="${xp(i).toFixed(1)}" y="${H-3}" text-anchor="middle" font-size="8" fill="#BBB">${d.label}</text>`;
+  }).join('');
+
+  // Y labels
+  const ylbls=`<text x="${PL-3}" y="${PT+7}" text-anchor="end" font-size="7.5" fill="#CCC">${fmtN(maxV)}${unit}</text>
+    <text x="${PL-3}" y="${PT+cH}" text-anchor="end" font-size="7.5" fill="#CCC">${fmtN(minV)}${unit}</text>`;
+
+  const dots=validPts.length<=15?validPts.map(p=>`<circle cx="${xp(p.i).toFixed(1)}" cy="${yp(p.v).toFixed(1)}" r="2.5" fill="${col}"/>`).join(''):'';
+
+  const gid='g'+Math.random().toString(36).slice(2,8);
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible;">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${col}" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="${col}" stop-opacity="0.01"/>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#${gid})"/>
+    <polyline points="${linePts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${goalSVG}${dots}${ylbls}${xlbls}
+  </svg>`;
+}
+
+function renderTrends(){
+  const goals=getGoals();
+  const METRICS=[
+    {key:'weight',   label:'Weight',           icon:'⚖️', unit:'kg',   color:'#2E6B47', dp:1},
+    {key:'calories', label:'Net Calories',      icon:'🔥', unit:' kcal',color:'#C07020', goal:goals?.calories},
+    {key:'protein',  label:'Protein',           icon:'💪', unit:'g',   color:'#2E5C8A', goal:goals?.protein},
+    {key:'carbs',    label:'Carbs',             icon:'🍞', unit:'g',   color:'#8A6F2E'},
+    {key:'fat',      label:'Fat',               icon:'🧈', unit:'g',   color:'#7A3B7A'},
+    {key:'fiber',    label:'Fiber',             icon:'🌾', unit:'g',   color:'#2E7A5C', goal:goals?.fiber},
+    {key:'water',    label:'Water',             icon:'💧', unit:' gl', color:'#3A7AB0', goal:goals?.water||8},
+    {key:'exercise', label:'Exercise Burned',   icon:'🏋️',unit:' kcal',color:'#B94040'},
+  ];
+
+  const makeCard=(m,small=false)=>{
+    const data=getMetricData(m.key,_trendRange);
+    const v=data.filter(d=>d.value!==null);
+    const latest=v.length?v[v.length-1].value:null;
+    const avg=v.length?v.reduce((a,b)=>a+b.value,0)/v.length:null;
+    const latestStr=latest!=null?(m.dp?fmtN(latest,m.dp):fmtN(latest))+m.unit:'—';
+    const avgStr=avg!=null?`Avg ${m.dp?fmtN(avg,m.dp):fmtN(avg)}${m.unit}`:'';
+    const badge=trendBadge(data,m.key);
+    const chart=makeSVGChart(data,{color:m.color,unit:m.unit,goal:m.goal,small});
+    if(small){
+      return `<div class="card" style="margin:0;padding:11px;">
+        <div class="trend-card-hdr">
+          <div><span style="font-size:15px;">${m.icon}</span> <span style="font-size:11px;font-weight:700;color:var(--text2);">${m.label}</span></div>
+          <div style="text-align:right;"><div class="trend-val sm" style="color:${m.color};">${latestStr}</div>${badge?`<div class="trend-arrow">${badge}</div>`:''}</div>
+        </div>
+        ${chart}
+        ${avgStr?`<div class="trend-avg">${avgStr}</div>`:''}
+      </div>`;
+    }
+    return `<div class="card">
+      <div class="trend-card-hdr">
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">${m.icon}</span><span style="font-size:13px;font-weight:700;color:var(--text2);">${m.label}</span></div>
+        <div style="text-align:right;"><div class="trend-val" style="color:${m.color};">${latestStr}</div>${badge?`<div class="trend-arrow">${badge}</div>`:''}</div>
+      </div>
+      ${chart}
+      ${avgStr?`<div class="trend-avg">${avgStr}</div>`:''}
+    </div>`;
+  };
+
+  let html='';
+  // Weight — full width, tall
+  html+=makeCard(METRICS[0],false);
+  // Calories + Protein — full width each
+  html+=makeCard(METRICS[1],false);
+  html+=makeCard(METRICS[2],false);
+  // Carbs / Fat — 2-col grid
+  html+='<div class="trend-grid">'+makeCard(METRICS[3],true)+makeCard(METRICS[4],true)+'</div>';
+  // Fiber / Water — 2-col grid
+  html+='<div class="trend-grid">'+makeCard(METRICS[5],true)+makeCard(METRICS[6],true)+'</div>';
+  // Exercise — full width
+  html+=makeCard(METRICS[7],false);
+
+  document.getElementById('trends-content').innerHTML=html;
+}
 
 /* ══════════ IMPORT FROM CLAUDE ══════════ */
 let _importedFoods = [];
